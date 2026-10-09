@@ -1,5 +1,10 @@
 package mtn.forge_layer.cpw.mods.fml.common;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
 /**
  * Dummy stand-in for {@code cpw.mods.fml.common.Mod} (Forge 1.7.10).
  * Placed in {@code mtn.forge_layer.*} to avoid any collision with real

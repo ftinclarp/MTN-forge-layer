@@ -1,5 +1,5 @@
 plugins {
-    id("fabric-loom") version(property("loom_version") as String)
+    id("fabric-loom") version "1.18-SNAPSHOT"
 }
 
 repositories {
@@ -38,8 +38,9 @@ java {
 }
 
 tasks.jar {
+    val projectName = project.name
     // Normal Fabric jar: no shadow, no relocation, no fat jar.
     from("README.md") {
-        rename { "${it}_${project.name}" }
+        rename { "${it}_${projectName}" }
     }
 }
