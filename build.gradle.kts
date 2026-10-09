@@ -1,5 +1,13 @@
 plugins {
     id("fabric-loom") version "1.18-SNAPSHOT"
+    `maven-publish`
+}
+
+version = property("mod_version") as String
+group = property("maven_group") as String
+
+base {
+    archivesName = property("archives_base_name") as String
 }
 
 repositories {
@@ -13,6 +21,17 @@ dependencies {
     mappings(loom.officialMojangMappings())
     modImplementation("net.fabricmc:fabric-loader:${property("loader_version")}")
     modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}")
+}
+
+// Publish to Maven Local only — so the artifact can be consumed during
+// development (./gradlew publishToMavenLocal). JitPack handles the remote
+// side; no remote repository is configured here.
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+        }
+    }
 }
 
 tasks.processResources {

@@ -1,0 +1,9 @@
+# JitPack build configuration for MTN-forge-layer.
+# fabric-loom 1.18 requires a JDK 25 Gradle daemon, so ask JitPack for it.
+# (If openjdk25 is not yet available on JitPack, the closest available tag
+# should be used and this file adjusted; this is a best-effort setup.)
+jdk:
+  - openjdk25
+
+before_install:
+  - sdk install java 25-tem || true
