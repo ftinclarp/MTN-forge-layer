@@ -1,7 +1,7 @@
 package mtn.forge_layer.cpw.mods.fml.common.registry;
 
-import mtn.forge_layer.net.minecraft.block.Block;
-import mtn.forge_layer.net.minecraft.item.Item;
+import mtn.minecraft_layer.net.minecraft.block.Block;
+import mtn.minecraft_layer.net.minecraft.item.Item;
 import mtn.forge_layer.registry.ForgeBlockAdapter;
 import mtn.forge_layer.registry.ForgeItemAdapter;
 
@@ -40,5 +40,19 @@ public final class GameRegistry {
         net.minecraft.world.item.Item fabricItem = new ForgeItemAdapter(forgeItem, new net.minecraft.world.item.Item.Properties());
         Registry.register(BuiltInRegistries.ITEM, id, fabricItem);
         System.out.println("[MTN-LAYER] registered item: " + id);
+    }
+
+    public static void registerTileEntity(
+            Class<? extends mtn.minecraft_layer.net.minecraft.tileentity.TileEntity> teClass,
+            String id) {
+        // TODO Phase 2: real Fabric BlockEntityType registration.
+        System.out.println("[MTN-LAYER] registerTileEntity: " + id
+                + " (" + teClass.getSimpleName() + ")");
+    }
+
+    public static void registerTileEntity(
+            Class<? extends mtn.minecraft_layer.net.minecraft.tileentity.TileEntity> teClass,
+            String id, String legacyId) {
+        registerTileEntity(teClass, id);
     }
 }

@@ -12,7 +12,12 @@ base {
 
 repositories {
     // Loom adds the essential maven repositories to download Minecraft and
-    // libraries from automatically. No extra repositories needed.
+    // libraries from automatically. The minecraft layer is consumed from
+    // mavenLocal during development and from JitPack for the remote side.
+    mavenLocal()
+    maven {
+        url = uri("https://jitpack.io")
+    }
 }
 
 dependencies {
@@ -21,6 +26,9 @@ dependencies {
     mappings(loom.officialMojangMappings())
     modImplementation("net.fabricmc:fabric-loader:${property("loader_version")}")
     modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}")
+
+    // Minecraft 1.7.10 API stand-ins (net.minecraft.*).
+    modImplementation("com.github.ftinclarp:MTN-minecraft-layer:v1.0.0")
 }
 
 // Publish to Maven Local only — so the artifact can be consumed during
