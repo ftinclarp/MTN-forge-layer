@@ -5,6 +5,7 @@ import mtn.forge_layer.cpw.mods.fml.common.SidedProxy;
 import mtn.forge_layer.cpw.mods.fml.common.event.FMLInitializationEvent;
 import mtn.forge_layer.cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import mtn.forge_layer.cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import mtn.forge_layer.cpw.mods.fml.common.registry.GameRegistry;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
@@ -96,7 +97,9 @@ public final class FabricEntry implements ModInitializer {
                         instance == null ? "<null>" : instance.getClass().getName(), Mod.class.getName());
                 continue;
             }
-            LOGGER.info("Found ported @Mod class via entrypoint: {}", instance.getClass().getName());
+            GameRegistry.CURRENT_MOD_ID = container.getProvider().getMetadata().getId();
+            LOGGER.info("Found ported @Mod class via entrypoint (mod: {}): {}",
+                    GameRegistry.CURRENT_MOD_ID, instance.getClass().getName());
             result.add(instance);
         }
         return result;
