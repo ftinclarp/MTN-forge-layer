@@ -48,58 +48,57 @@ public final class FabricEntry implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        List<Class<?>> modClasses = loadModClasses();
-        if (modClasses.isEmpty()) {
+        List<Object> modInstances = loadModInstances();
+        if (modInstances.isEmpty()) {
             LOGGER.warn(
                     "No {} entrypoint found; nothing to dispatch. "
                             + "Is fabric.mod.json missing \"{}\"?",
                     FORGE_MOD_CLASS_ENTRYPOINT, FORGE_MOD_CLASS_ENTRYPOINT);
             return;
         }
-        for (Class<?> modClass : modClasses) {
+        for (Object instance : modInstances) {
             try {
-                dispatch(modClass);
+                dispatch(instance);
             } catch (ReflectiveOperationException e) {
-                LOGGER.error("Failed to initialize ported mod {}", modClass.getName(), e);
+                LOGGER.error("Failed to initialize ported mod {}", instance.getClass().getName(), e);
             }
         }
     }
 
-    /** Load every class named by the {@code mtn:forge-mod-class} entrypoint. */
-    private static List<Class<?>> loadModClasses() {
-        List<Class<?>> result = new ArrayList<>();
-        List<EntrypointContainer<String>> containers;
+    /**
+     * Obtain every instance named by the {@code mtn:forge-mod-class}
+     * entrypoint. Fabric Loader's default language adapter instantiates each
+     * named class via its no-arg constructor and casts it to the requested
+     * entrypoint type — so {@code Object.class} requests yield the instances
+     * themselves (casting a class to {@code String.class} would fail).
+     */
+    private static List<Object> loadModInstances() {
+        List<Object> result = new ArrayList<>();
+        List<EntrypointContainer<Object>> containers;
         try {
             containers = FabricLoader.getInstance()
-                    .getEntrypointContainers(FORGE_MOD_CLASS_ENTRYPOINT, String.class);
+                    .getEntrypointContainers(FORGE_MOD_CLASS_ENTRYPOINT, Object.class);
         } catch (RuntimeException e) {
             LOGGER.warn("Failed to read {} entrypoint: {}", FORGE_MOD_CLASS_ENTRYPOINT, e.getMessage());
             return result;
         }
-        for (EntrypointContainer<String> container : containers) {
-            ClassLoader loader = container.getEntrypoint().getClass().getClassLoader();
-            String className = container.getEntrypoint();
-            try {
-                Class<?> type = Class.forName(className, false, loader);
-                if (!type.isAnnotationPresent(Mod.class)) {
-                    LOGGER.warn("Entrypoint {} is not annotated with {}; skipping.",
-                            className, Mod.class.getName());
-                    continue;
-                }
-                LOGGER.info("Found ported @Mod class via entrypoint: {}", type.getName());
-                result.add(type);
-            } catch (ClassNotFoundException | LinkageError e) {
-                LOGGER.warn("Cannot load {} entrypoint class {}: {}",
-                        FORGE_MOD_CLASS_ENTRYPOINT, className, e.getMessage());
+        for (EntrypointContainer<Object> container : containers) {
+            Object instance = container.getEntrypoint();
+            if (instance == null || !instance.getClass().isAnnotationPresent(Mod.class)) {
+                LOGGER.warn("Entrypoint {} is not annotated with {}; skipping.",
+                        instance == null ? "<null>" : instance.getClass().getName(), Mod.class.getName());
+                continue;
             }
+            LOGGER.info("Found ported @Mod class via entrypoint: {}", instance.getClass().getName());
+            result.add(instance);
         }
         return result;
     }
 
-    /** Instantiate the ported mod, wire proxies, then run lifecycle handlers. */
-    private static void dispatch(Class<?> modClass) throws ReflectiveOperationException {
-        Object instance = modClass.getConstructor().newInstance();
-        LOGGER.info("Instantiated ported mod {}", modClass.getName());
+    /** Wire proxies on the ported mod instance, then run lifecycle handlers. */
+    private static void dispatch(Object instance) throws ReflectiveOperationException {
+        Class<?> modClass = instance.getClass();
+        LOGGER.info("Initializing ported mod instance {}", modClass.getName());
 
         EnvType env = FabricLoader.getInstance().getEnvironmentType();
         for (Field field : modClass.getDeclaredFields()) {
