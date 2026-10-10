@@ -9,157 +9,91 @@ import mtn.forge_layer.cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 
 /**
  * Fabric entry point for the Forge 1.7.10 compatibility shim.
  *
- * <p>At {@code onInitialize} it scans the classpath for a class carrying
- * {@link Mod}, instantiates it, injects {@link SidedProxy} fields based on
- * the current environment, then dispatches the {@code @Mod.EventHandler}
- * lifecycle methods in order: pre-init, init, post-init.
+ * <p>At {@code onInitialize} it loads the ported Forge mod's {@code @Mod}
+ * class through the {@code "mtn:forge-mod-class"} entrypoint declared in
+ * the mod's {@code fabric.mod.json} (emitted by the MTN transform stage),
+ * instantiates it, injects {@link SidedProxy} fields based on the current
+ * environment, then dispatches the {@code @Mod.EventHandler} lifecycle
+ * methods in order: pre-init, init, post-init.
  *
- * <p>Scan approach: enumerate the URLs of the Fabric Loader class loader
- * (a {@link URLClassLoader}), open each jar/directory, and reflectively load
- * the well-known namespaces the ported mod could not live in is skipped for
- * speed. If no {@code @Mod} class is found, an explicit warning is logged
- * and nothing else happens — the game continues normally.
+ * <p>Discovery approach: the {@code "mtn:forge-mod-class"} entrypoint names
+ * the fully-qualified {@code @Mod} class explicitly, so no classpath
+ * scanning is needed. This works under Fabric's Knot class loader (which is
+ * not a {@link java.net.URLClassLoader}) and avoids scanning entirely.
+ * The transform stage emits the entrypoint automatically; see its
+ * {@code mtn:forge-mod-class} handling in TransformStage.
+ *
+ * <p>If no entrypoint is present, an explicit warning is logged and nothing
+ * else happens — the game continues normally.
  */
 public final class FabricEntry implements ModInitializer {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("mtn_forge_layer");
 
-    /** Root class loader of Fabric Loader. */
-    private static final ClassLoader CLASS_LOADER = FabricEntry.class.getClassLoader();
-
-    /** Prefixes of packages the ported mod would never define (skip for speed). */
-    private static final String[] SKIP_PREFIXES = {
-        "net.minecraft.", "net.fabricmc.", "com.mojang.", "org.slf4j.",
-        "org.apache.", "com.google.", "io.netty.", "it.unimi.", "org.lwjgl.",
-        "com.ibm.", "org.joml.", "mtn.forge_layer."
-    };
+    /** Fabric entrypoint key that names the ported mod's {@code @Mod} class. */
+    public static final String FORGE_MOD_CLASS_ENTRYPOINT = "mtn:forge-mod-class";
 
     @Override
     public void onInitialize() {
-        Class<?> modClass = findModClass();
-        if (modClass == null) {
+        List<Class<?>> modClasses = loadModClasses();
+        if (modClasses.isEmpty()) {
             LOGGER.warn(
-                    "No class annotated with {} found on the classpath; nothing to dispatch.",
-                    Mod.class.getName());
+                    "No {} entrypoint found; nothing to dispatch. "
+                            + "Is fabric.mod.json missing \"{}\"?",
+                    FORGE_MOD_CLASS_ENTRYPOINT, FORGE_MOD_CLASS_ENTRYPOINT);
             return;
         }
+        for (Class<?> modClass : modClasses) {
+            try {
+                dispatch(modClass);
+            } catch (ReflectiveOperationException e) {
+                LOGGER.error("Failed to initialize ported mod {}", modClass.getName(), e);
+            }
+        }
+    }
+
+    /** Load every class named by the {@code mtn:forge-mod-class} entrypoint. */
+    private static List<Class<?>> loadModClasses() {
+        List<Class<?>> result = new ArrayList<>();
+        List<EntrypointContainer<String>> containers;
         try {
-            dispatch(modClass);
-        } catch (ReflectiveOperationException e) {
-            LOGGER.error("Failed to initialize ported mod {}", modClass.getName(), e);
+            containers = FabricLoader.getInstance()
+                    .getEntrypointContainers(FORGE_MOD_CLASS_ENTRYPOINT, String.class);
+        } catch (RuntimeException e) {
+            LOGGER.warn("Failed to read {} entrypoint: {}", FORGE_MOD_CLASS_ENTRYPOINT, e.getMessage());
+            return result;
         }
-    }
-
-    /** Scan the classpath for the single {@code @Mod}-annotated class. */
-    private static Class<?> findModClass() {
-        if (!(CLASS_LOADER instanceof URLClassLoader urlLoader)) {
-            LOGGER.warn("Class loader is not a URLClassLoader; cannot scan classpath.");
-            return null;
-        }
-        for (URL url : urlLoader.getURLs()) {
-            String spec = url.getFile();
-            if (spec == null || spec.isEmpty()) {
-                continue;
-            }
-            if (spec.endsWith(".jar")) {
-                Class<?> found = scanJar(url);
-                if (found != null) {
-                    return found;
-                }
-            } else {
-                Class<?> found = scanDirectory(new java.io.File(url.getPath()));
-                if (found != null) {
-                    return found;
-                }
-            }
-        }
-        return null;
-    }
-
-    private static Class<?> scanJar(URL url) {
-        try (JarFile jar = new JarFile(url.getFile())) {
-            var entries = jar.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                if (entry.isDirectory() || !entry.getName().endsWith(".class")) {
+        for (EntrypointContainer<String> container : containers) {
+            ClassLoader loader = container.getEntrypoint().getClass().getClassLoader();
+            String className = container.getEntrypoint();
+            try {
+                Class<?> type = Class.forName(className, false, loader);
+                if (!type.isAnnotationPresent(Mod.class)) {
+                    LOGGER.warn("Entrypoint {} is not annotated with {}; skipping.",
+                            className, Mod.class.getName());
                     continue;
                 }
-                Class<?> candidate = loadCandidate(entry.getName());
-                if (candidate != null) {
-                    return candidate;
-                }
-            }
-        } catch (java.io.IOException e) {
-            LOGGER.debug("Skipping unreadable jar {}: {}", url, e.getMessage());
-        }
-        return null;
-    }
-
-    private static Class<?> scanDirectory(java.io.File dir) {
-        if (dir == null || !dir.isDirectory()) {
-            return null;
-        }
-        java.io.File[] files = dir.listFiles();
-        if (files == null) {
-            return null;
-        }
-        for (java.io.File file : files) {
-            Class<?> found = file.isDirectory() ? scanDirectory(file) : null;
-            if (found == null && file.isFile() && file.getName().endsWith(".class")) {
-                found = loadCandidate(file.getPath());
-            }
-            if (found != null) {
-                return found;
+                LOGGER.info("Found ported @Mod class via entrypoint: {}", type.getName());
+                result.add(type);
+            } catch (ClassNotFoundException | LinkageError e) {
+                LOGGER.warn("Cannot load {} entrypoint class {}: {}",
+                        FORGE_MOD_CLASS_ENTRYPOINT, className, e.getMessage());
             }
         }
-        return null;
-    }
-
-    /**
-     * Convert a {@code .class} path fragment to a binary class name, skip
-     * known-shared namespaces, load the class and check for {@link Mod}.
-     *
-     * @param classPath path fragment like {@code com/mtn/example/ExampleMod.class}
-     */
-    private static Class<?> loadCandidate(String classPath) {
-        String name = classPath
-                .replace('\\', '/')
-                .replace('/', '.')
-                .replaceFirst("\\.class$", "");
-        for (String prefix : SKIP_PREFIXES) {
-            if (name.startsWith(prefix)) {
-                return null;
-            }
-        }
-        try {
-            Class<?> type = Class.forName(name, false, CLASS_LOADER);
-            if (type.isAnnotationPresent(Mod.class)
-                    && type.getAnnotation(Mod.class) != null) {
-                LOGGER.info("Found ported @Mod class: {}", type.getName());
-                return type;
-            }
-        } catch (ClassNotFoundException | LinkageError e) {
-            // class depends on MC at load time with initialize=false only the
-            // type name is resolved; still safe to skip un-initializable types
-            // like traits or synthetic helpers.
-        }
-        return null;
+        return result;
     }
 
     /** Instantiate the ported mod, wire proxies, then run lifecycle handlers. */
