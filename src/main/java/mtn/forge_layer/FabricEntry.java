@@ -71,6 +71,8 @@ public final class FabricEntry implements ModInitializer {
                 LOGGER.error("Failed to initialize ported mod {}", instance.getClass().getName(), e);
             }
         }
+        // R3a: install the network bridge after the ported mod's lifecycle so registered codecs are seen.
+        mtn.forge_layer.registry.FabricNetworkBridge.install(FabricLoader.getInstance());
     }
 
     /**
