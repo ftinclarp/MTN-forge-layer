@@ -10,6 +10,8 @@ import java.lang.annotation.Target;
  * Placed in {@code mtn.forge_layer.*} to avoid any collision with real
  * Forge or Fabric classes.
  */
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
 public @interface Mod {
 
     String modid();
