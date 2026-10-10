@@ -46,8 +46,15 @@ public final class FabricEntry implements ModInitializer {
     /** Fabric entrypoint key that names the ported mod's {@code @Mod} class. */
     public static final String FORGE_MOD_CLASS_ENTRYPOINT = "mtn:forge-mod-class";
 
+    /** Ensures the dispatch runs at most once even if {@code onInitialize} is called twice. */
+    private static boolean dispatched = false;
+
     @Override
     public void onInitialize() {
+        if (dispatched) {
+            return;
+        }
+        dispatched = true;
         List<Object> modInstances = loadModInstances();
         if (modInstances.isEmpty()) {
             LOGGER.warn(
