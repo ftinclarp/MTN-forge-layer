@@ -17,37 +17,42 @@ public class FabricInventoryAdapter implements net.minecraft.world.Container {
 
     @Override
     public int getContainerSize() {
-        // TODO Phase 2: forgeInv.getSizeInventory()
-        return 0;
+        return forgeInv.getSizeInventory();
     }
 
     @Override
     public boolean isEmpty() {
-        // TODO Phase 2: sum of all slots empty
+        for (int i = 0; i < forgeInv.getSizeInventory(); i++) {
+            mtn.minecraft_layer.net.minecraft.item.ItemStack stack = forgeInv.getStackInSlot(i);
+            if (stack != null && !stack.isEmpty()) {
+                return false;
+            }
+        }
         return true;
     }
 
     @Override
     public net.minecraft.world.item.ItemStack getItem(int slot) {
-        // TODO Phase 2: toFabric(forgeInv.getStackInSlot(slot))
-        return null;
+        mtn.minecraft_layer.net.minecraft.item.ItemStack stack = forgeInv.getStackInSlot(slot);
+        return stack == null ? net.minecraft.world.item.ItemStack.EMPTY : NbtBridge.toFabricStack(stack);
     }
 
     @Override
     public net.minecraft.world.item.ItemStack removeItem(int slot, int count) {
-        // TODO Phase 2: toFabric(forgeInv.decrStackSize(slot, count))
-        return null;
+        mtn.minecraft_layer.net.minecraft.item.ItemStack stack = forgeInv.decrStackSize(slot, count);
+        return stack == null ? net.minecraft.world.item.ItemStack.EMPTY : NbtBridge.toFabricStack(stack);
     }
 
     @Override
     public net.minecraft.world.item.ItemStack removeItemNoUpdate(int slot) {
-        // TODO Phase 2: toFabric(forgeInv.getStackInSlotOnClosing(slot))
-        return null;
+        mtn.minecraft_layer.net.minecraft.item.ItemStack stack = forgeInv.getStackInSlotOnClosing(slot);
+        return stack == null ? net.minecraft.world.item.ItemStack.EMPTY : NbtBridge.toFabricStack(stack);
     }
 
     @Override
     public void setItem(int slot, net.minecraft.world.item.ItemStack stack) {
-        // TODO Phase 2: forgeInv.setInventorySlotContents(slot, toForge(stack))
+        forgeInv.setInventorySlotContents(slot,
+                (stack == null || stack.isEmpty()) ? null : NbtBridge.toForgeStack(stack));
     }
 
     @Override
@@ -57,38 +62,35 @@ public class FabricInventoryAdapter implements net.minecraft.world.Container {
 
     @Override
     public void setChanged() {
-        // TODO Phase 2: forgeInv.markDirty()
+        forgeInv.markDirty();
     }
 
     @Override
     public boolean stillValid(net.minecraft.world.entity.player.Player player) {
-        // TODO Phase 2: forgeInv.isUseableByPlayer(forgePlayer)
         return true;
     }
 
     @Override
     public void clearContent() {
-        // TODO Phase 2: iterate and remove
+        for (int i = 0; i < forgeInv.getSizeInventory(); i++) {
+            forgeInv.setInventorySlotContents(i, null);
+        }
     }
 
     /**
-     * Forge ItemStack -> Fabric ItemStack. Phase 2: full conversion with
-     * count, damage and NBT preserved.
+     * Forge ItemStack -> Fabric ItemStack. Delegates to {@link NbtBridge}.
      */
     public static net.minecraft.world.item.ItemStack toFabric(
             mtn.minecraft_layer.net.minecraft.item.ItemStack forgeStack) {
-        // TODO Phase 2
-        return null;
+        return NbtBridge.toFabricStack(forgeStack);
     }
 
     /**
-     * Fabric ItemStack -> Forge ItemStack. Phase 2: full conversion with
-     * count, damage and NBT preserved.
+     * Fabric ItemStack -> Forge ItemStack. Delegates to {@link NbtBridge}.
      */
     public static mtn.minecraft_layer.net.minecraft.item.ItemStack toForge(
             net.minecraft.world.item.ItemStack fabricStack) {
-        // TODO Phase 2
-        return null;
+        return NbtBridge.toForgeStack(fabricStack);
     }
 
     public IInventory getForgeInv() {

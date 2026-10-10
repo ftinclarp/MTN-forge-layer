@@ -2,13 +2,18 @@ package mtn.forge_layer.cpw.mods.fml.common.registry;
 
 import mtn.minecraft_layer.net.minecraft.block.Block;
 import mtn.minecraft_layer.net.minecraft.item.Item;
+import mtn.minecraft_layer.net.minecraft.tileentity.TileEntity;
 import mtn.forge_layer.registry.ForgeBlockAdapter;
 import mtn.forge_layer.registry.ForgeItemAdapter;
 
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+
+import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 
 /**
  * Stand-in for {@code cpw.mods.fml.common.registry.GameRegistry}
@@ -20,6 +25,9 @@ public final class GameRegistry {
 
     /** Mod id of the ported {@code @Mod} currently being dispatched, set by FabricEntry. */
     public static String CURRENT_MOD_ID = "mtnexample";
+
+    private static final java.util.Map<Class<?>, BlockEntityType<?>> BY_CLASS = new java.util.HashMap<>();
+    private static final java.util.Map<String, BlockEntityType<?>> BY_ID = new java.util.HashMap<>();
 
     private GameRegistry() {
     }
@@ -43,15 +51,45 @@ public final class GameRegistry {
     }
 
     public static void registerTileEntity(
-            Class<? extends mtn.minecraft_layer.net.minecraft.tileentity.TileEntity> teClass,
+            Class<? extends TileEntity> teClass,
             String id) {
-        // TODO Phase 2: real Fabric BlockEntityType registration.
-        System.out.println("[MTN-LAYER] registerTileEntity: " + id
-                + " (" + teClass.getSimpleName() + ")");
+        try {
+            // Instantiate a fresh Forge TE so each placed block gets its own instance.
+            // FabricBlockEntityTypeBuilder.create's factory must return a NEW BlockEntity per call.
+            BlockEntityType<?> type = FabricBlockEntityTypeBuilder
+                    .<mtn.forge_layer.registry.FabricBlockEntityAdapter>create(
+                            (pos, state) -> {
+                                try {
+                                    TileEntity fresh =
+                                            (TileEntity) teClass.getDeclaredConstructor().newInstance();
+                                    return new mtn.forge_layer.registry.FabricBlockEntityAdapter(pos, state, fresh);
+                                } catch (ReflectiveOperationException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            })
+                    .build();
+
+            ResourceLocation resId = ResourceLocation.fromNamespaceAndPath(CURRENT_MOD_ID, id);
+            registerIntoRegistry(resId, type);
+
+            BY_CLASS.put(teClass, type);
+            BY_ID.put(id, type);
+            System.out.println("[MTN-LAYER] registerTileEntity: " + id
+                    + " (" + teClass.getSimpleName() + ")");
+        } catch (RuntimeException e) {
+            System.out.println("[MTN-LAYER] registerTileEntity FAILED for " + id
+                    + " (" + teClass.getSimpleName() + "): " + e.getMessage());
+        }
+    }
+
+    /** Registers a block entity type under the current mod id. */
+    private static void registerIntoRegistry(
+            ResourceLocation r, BlockEntityType<?> t) {
+        Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, r, t);
     }
 
     public static void registerTileEntity(
-            Class<? extends mtn.minecraft_layer.net.minecraft.tileentity.TileEntity> teClass,
+            Class<? extends TileEntity> teClass,
             String id, String legacyId) {
         registerTileEntity(teClass, id);
     }
