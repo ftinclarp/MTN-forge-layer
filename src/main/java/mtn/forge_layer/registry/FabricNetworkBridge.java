@@ -82,7 +82,13 @@ public final class FabricNetworkBridge {
     }
 
     /** Installs client + server play receivers for one FML channel. */
-    private static void registerReceiver(String channelName) {
+    private static boolean receiversInstalled = false;
+
+    private static synchronized void registerReceiver(String channelName) {
+        if (receiversInstalled) {
+            return;
+        }
+        receiversInstalled = true;
         // Play + server: a payload type must be registered before a receiver can use it.
         PayloadTypeRegistry.playC2S().register(RawPayload.TYPE, RawPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(RawPayload.TYPE, RawPayload.CODEC);

@@ -16,10 +16,11 @@ public class FabricBlockEntityAdapter
     private final TileEntity forgeTe;
 
     public FabricBlockEntityAdapter(
+            net.minecraft.world.level.block.entity.BlockEntityType<?> type,
             net.minecraft.core.BlockPos pos,
             net.minecraft.world.level.block.state.BlockState state,
             TileEntity forgeTe) {
-        super(null, pos, state);
+        super(type, pos, state);
         this.forgeTe = forgeTe;
         // There is no vanilla World on the forge side yet; leave null until the
         // block's world is wired in.

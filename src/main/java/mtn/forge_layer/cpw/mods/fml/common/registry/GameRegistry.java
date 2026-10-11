@@ -56,18 +56,26 @@ public final class GameRegistry {
         try {
             // Instantiate a fresh Forge TE so each placed block gets its own instance.
             // FabricBlockEntityTypeBuilder.create's factory must return a NEW BlockEntity per call.
+            final net.minecraft.world.level.block.entity.BlockEntityType<?>[] holder =
+                    new net.minecraft.world.level.block.entity.BlockEntityType<?>[1];
             BlockEntityType<?> type = FabricBlockEntityTypeBuilder
                     .<mtn.forge_layer.registry.FabricBlockEntityAdapter>create(
                             (pos, state) -> {
                                 try {
                                     TileEntity fresh =
                                             (TileEntity) teClass.getDeclaredConstructor().newInstance();
-                                    return new mtn.forge_layer.registry.FabricBlockEntityAdapter(pos, state, fresh);
+                                    return new mtn.forge_layer.registry.FabricBlockEntityAdapter(
+                                            holder[0], pos, state, fresh);
                                 } catch (ReflectiveOperationException e) {
                                     throw new RuntimeException(e);
                                 }
                             })
                     .build();
+
+            // Wire the block entity type into the factory to avoid a null type.
+            // build() delegates to BlockEntityType.Builder.of(...). No valid block is
+            // attached here; ForgeBlockAdapter owns per-block types.
+            holder[0] = type;
 
             ResourceLocation resId = ResourceLocation.fromNamespaceAndPath(CURRENT_MOD_ID, id);
             registerIntoRegistry(resId, type);

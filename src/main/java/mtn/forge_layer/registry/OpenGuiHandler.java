@@ -54,22 +54,37 @@ public final class OpenGuiHandler {
     /** Entry point from {@code NetworkRegistry.openGui}. */
     public static void openGui(Object mod, int id, Object player, Object world,
             int x, int y, int z) {
-        if (player instanceof ServerPlayer) {
-            openGuiServerSide(mod, id, (ServerPlayer) player, world, x, y, z);
+        ServerPlayer sp = resolveServerPlayer(player);
+        if (sp != null) {
+            openGuiServerSide(mod, id, sp, player, world, x, y, z);
         } else if (player instanceof net.minecraft.client.player.LocalPlayer) {
             System.out.println("[MTN-LAYER] openGui called from the client; ignoring (server-driven).");
         }
     }
 
+    /** Extracts the real ServerPlayer from a ForgePlayerBridge (or direct). */
+    private static ServerPlayer resolveServerPlayer(Object player) {
+        if (player instanceof ServerPlayer) {
+            return (ServerPlayer) player;
+        }
+        if (player instanceof ForgePlayerBridge) {
+            return ((ForgePlayerBridge) player).serverPlayer();
+        }
+        return null;
+    }
+
     /** Server: build the container menu, attach to the player, send OpenGuiMessage. */
     private static void openGuiServerSide(Object mod, int id, ServerPlayer sp,
-            Object world, int x, int y, int z) {
+            Object player, Object world, int x, int y, int z) {
         IGuiHandler handler = NetworkRegistry.INSTANCE.getGuiHandler(mod);
         if (handler == null) {
             System.out.println("[MTN-LAYER] openGuiServer: no IGuiHandler for mod " + mod);
             return;
         }
-        Object playerProxy = new EntityPlayerProxy(sp);
+        // The ForgePlayerBridge/ForgeWorldBridge the example expects to cast to.
+        Object playerProxy = player instanceof ForgePlayerBridge
+                ? player
+                : new EntityPlayerProxy(sp);
         Object element = handler.getServerGuiElement(id, playerProxy, world, x, y, z);
         if (!(element instanceof Container)) {
             System.out.println("[MTN-LAYER] openGuiServer: server element is not a layered Container: "
