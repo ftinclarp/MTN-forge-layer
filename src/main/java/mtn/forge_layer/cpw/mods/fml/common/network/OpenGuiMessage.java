@@ -28,21 +28,23 @@ public class OpenGuiMessage implements IMessage {
     }
 
     @Override
-    public void fromBytes(net.minecraft.network.FriendlyByteBuf buf) {
-        syncId = buf.readInt();
-        guiId = buf.readInt();
-        x = buf.readInt();
-        y = buf.readInt();
-        z = buf.readInt();
+    public void fromBytes(io.netty.buffer.ByteBuf buf) {
+        net.minecraft.network.FriendlyByteBuf b = new net.minecraft.network.FriendlyByteBuf(buf);
+        syncId = b.readInt();
+        guiId = b.readInt();
+        x = b.readInt();
+        y = b.readInt();
+        z = b.readInt();
     }
 
     @Override
-    public void toBytes(net.minecraft.network.FriendlyByteBuf buf) {
-        buf.writeInt(syncId);
-        buf.writeInt(guiId);
-        buf.writeInt(x);
-        buf.writeInt(y);
-        buf.writeInt(z);
+    public void toBytes(io.netty.buffer.ByteBuf buf) {
+        net.minecraft.network.FriendlyByteBuf b = new net.minecraft.network.FriendlyByteBuf(buf);
+        b.writeInt(syncId);
+        b.writeInt(guiId);
+        b.writeInt(x);
+        b.writeInt(y);
+        b.writeInt(z);
     }
 
     public int getSyncId() {

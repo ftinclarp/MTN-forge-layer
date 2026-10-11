@@ -62,5 +62,26 @@ public class NetworkRegistry {
             int x, int y, int z) {
         mtn.forge_layer.registry.OpenGuiHandler.openGui(mod, id, player, world, x, y, z);
     }
+
+    /**
+     * Real Forge 1.7.10 style: open a GUI for the current (unknown) player.
+     * Without a player the forge layer cannot resolve one; real mods use
+     * {@code EntityPlayer.openGui}. Provided for API-completeness.
+     */
+    public void openGui(Object mod, int modGuiId,
+            mtn.minecraft_layer.net.minecraft.world.World world,
+            int x, int y, int z) {
+        mtn.forge_layer.registry.OpenGuiHandler.openGui(mod, modGuiId, null, world, x, y, z);
+    }
+
+    /**
+     * Real Forge 1.7.10 style: open a GUI for a specific player.
+     */
+    public void openGui(mtn.minecraft_layer.net.minecraft.entity.player.EntityPlayer player,
+            Object mod, int modGuiId,
+            mtn.minecraft_layer.net.minecraft.world.World world,
+            int x, int y, int z) {
+        mtn.forge_layer.registry.OpenGuiHandler.openGui(mod, modGuiId, player, world, x, y, z);
+    }
 }
 

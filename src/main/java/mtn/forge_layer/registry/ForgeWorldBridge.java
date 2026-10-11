@@ -19,7 +19,7 @@ public class ForgeWorldBridge extends mtn.minecraft_layer.net.minecraft.world.Wo
     }
 
     @Override
-    public TileEntity getBlockTileEntity(int x, int y, int z) {
+    public TileEntity getTileEntity(int x, int y, int z) {
         net.minecraft.world.level.block.entity.BlockEntity be =
                 level.getBlockEntity(new BlockPos(x, y, z));
         if (be instanceof FabricBlockEntityAdapter) {

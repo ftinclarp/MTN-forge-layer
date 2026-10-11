@@ -1,7 +1,7 @@
 package mtn.forge_layer.registry;
 
 import mtn.minecraft_layer.net.minecraft.entity.player.EntityPlayer;
-import mtn.minecraft_layer.net.minecraft.inventory.InventoryPlayer;
+import mtn.minecraft_layer.net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.world.entity.player.Player;
 
 /**
@@ -30,5 +30,13 @@ public class ForgePlayerBridge extends EntityPlayer {
         return player instanceof net.minecraft.server.level.ServerPlayer
                 ? (net.minecraft.server.level.ServerPlayer) player
                 : null;
+    }
+
+    /** Routes the layer {@code EntityPlayer.openGui} into the forge layer's GUI handler. */
+    @Override
+    public void openGui(Object mod, int modGuiId,
+            mtn.minecraft_layer.net.minecraft.world.World world,
+            int x, int y, int z) {
+        mtn.forge_layer.registry.OpenGuiHandler.openGui(mod, modGuiId, this, world, x, y, z);
     }
 }

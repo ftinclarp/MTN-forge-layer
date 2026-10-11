@@ -139,35 +139,42 @@ public final class NbtBridge {
     /**
      * Best-effort conversion of a Forge-side ItemStack to a vanilla Mojmap ItemStack.
      *
-     * <p>The Forge-side Item is a dummy carrying only a name; there is no mapping to a
-     * real vanilla item, so {@link Items#AIR} is used as a neutral placeholder and only
-     * the count is preserved. Item identity is NOT mapped here — a future round maps it
-     * via a dedicated registry. Damage is not surfaced (dummy item). NBT is carried over
-     * best-effort through {@link #toFabric(NBTTagCompound)} when present.
+     * <p>If the Forge stack carries a real Mojmap stack (set by
+     * {@link #toForgeStack(ItemStack)} when an item was placed through the GUI),
+     * it is returned directly so identity and count round-trip faithfully. Otherwise
+     * a neutral placeholder is built from the count.
      */
     public static ItemStack toFabricStack(mtn.minecraft_layer.net.minecraft.item.ItemStack forge) {
         if (forge == null || forge.isEmpty()) {
             return ItemStack.EMPTY;
         }
+        if (forge.getFabricStack() != null) {
+            return forge.getFabricStack();
+        }
         // Placeholder item; identity mapping is a future round.
         // Mojmap 1.20.5+ ItemStack has no setTag (data-component refactor), so
         // NBT is not carried onto the vanilla stack here — best effort per R2.
-        return new ItemStack(Items.AIR, forge.getCount());
+        return new ItemStack(Items.AIR, forge.stackSize);
     }
 
     /**
      * Conversion of a vanilla Mojmap ItemStack to a Forge-side ItemStack.
      *
-     * <p>The Forge-side item model is unimplemented for real items: the Forge {@code Item}
-     * is a name-only dummy with no way to wrap a vanilla item, so no 1:1 Forge ItemStack
-     * can be built. This deliberately returns {@code null} — it is safe for our purposes,
-     * because {@code canPlayerUse} already returns {@code true} and the R2 chest exercises
-     * Forge-side ItemStack directly (e.g. {@code new ItemStack(MY_ITEM, 7)}) and never
-     * through this bridge.
+     * <p>Builds a layer stack that carries the real Mojmap stack through
+     * {@code setFabricStack(...)} so the round-trip preserves item identity and
+     * count. The layer {@code Item} itself remains a name-only dummy (used only
+     * for {@code isEmpty()} and NBT persistence), while the authoritative item
+     * lives in the carried Mojmap stack.
      */
     public static mtn.minecraft_layer.net.minecraft.item.ItemStack toForgeStack(net.minecraft.world.item.ItemStack fabric) {
-        // No 1:1 Forge item exists; keep it simple and documented: return null.
-        return null;
+        if (fabric == null || fabric.isEmpty()) {
+            return null;
+        }
+        mtn.minecraft_layer.net.minecraft.item.ItemStack forge =
+                new mtn.minecraft_layer.net.minecraft.item.ItemStack(
+                        new mtn.minecraft_layer.net.minecraft.item.Item(), fabric.getCount());
+        forge.setFabricStack(fabric);
+        return forge;
     }
 
     /**

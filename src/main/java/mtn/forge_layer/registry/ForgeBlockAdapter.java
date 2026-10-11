@@ -1,5 +1,6 @@
 package mtn.forge_layer.registry;
 
+import mtn.forge_layer.cpw.mods.fml.common.registry.GameRegistry;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionResult;
@@ -51,35 +52,45 @@ public class ForgeBlockAdapter extends Block implements EntityBlock {
             return null;
         }
         net.minecraft.world.level.block.entity.BlockEntityType<?> type = blockEntityType();
+        if (type == null) {
+            return null; // no pre-registered type (see below) — block acts as plain block
+        }
         mtn.minecraft_layer.net.minecraft.tileentity.TileEntity te =
                 ((mtn.minecraft_layer.net.minecraft.block.BlockContainer) forgeBlock)
                         .createNewTileEntity(new mtn.minecraft_layer.net.minecraft.world.World(), 0);
         return new FabricBlockEntityAdapter(type, pos, state, te);
     }
 
-    /** Lazily builds and caches the block entity type valid for this block. */
+    /** Returns the block entity type registered for this block's tile class. Never builds one. */
     private volatile net.minecraft.world.level.block.entity.BlockEntityType<?> cachedType;
+
+    /** Set by GameRegistry.registerTileEntity once the type exists (preInit). */
+    public void setBlockEntityType(net.minecraft.world.level.block.entity.BlockEntityType<?> type) {
+        this.cachedType = type;
+    }
 
     private net.minecraft.world.level.block.entity.BlockEntityType<?> blockEntityType() {
         net.minecraft.world.level.block.entity.BlockEntityType<?> t = cachedType;
         if (t != null) {
             return t;
         }
-        final mtn.minecraft_layer.net.minecraft.block.Block bc = forgeBlock;
-        final Block self = this;
-        // The factory runs at placement time (after cachedType is assigned below).
-        net.minecraft.world.level.block.entity.BlockEntityType<?> type =
-                net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder
-                        .create(
-                                (pos, state) -> new FabricBlockEntityAdapter(
-                                        cachedType, pos, state,
-                                        ((mtn.minecraft_layer.net.minecraft.block.BlockContainer) bc)
-                                                .createNewTileEntity(
-                                                        new mtn.minecraft_layer.net.minecraft.world.World(), 0)),
-                                self)
-                        .build();
-        this.cachedType = type;
-        return type;
+        if (!(forgeBlock instanceof mtn.minecraft_layer.net.minecraft.block.BlockContainer)) {
+            return null;
+        }
+        // Probe the tile class this container creates, then fetch the type that
+        // GameRegistry.registerTileEntity built during preInit. We must NOT build
+        // a BlockEntityType here: in 1.21.1 registries are frozen after mod init,
+        // so building at placement time throws "This registry can't create
+        // intrusive holders".
+        mtn.minecraft_layer.net.minecraft.tileentity.TileEntity probe =
+                ((mtn.minecraft_layer.net.minecraft.block.BlockContainer) forgeBlock)
+                        .createNewTileEntity(new mtn.minecraft_layer.net.minecraft.world.World(), 0);
+        if (probe == null) {
+            return null;
+        }
+        t = GameRegistry.blockEntityTypeFor(probe.getClass());
+        this.cachedType = t;
+        return t;
     }
 
     public mtn.minecraft_layer.net.minecraft.block.Block getForgeBlock() {

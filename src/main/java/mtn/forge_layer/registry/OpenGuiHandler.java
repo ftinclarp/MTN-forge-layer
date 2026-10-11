@@ -5,15 +5,19 @@ import mtn.forge_layer.cpw.mods.fml.common.network.NetworkRegistry;
 import mtn.forge_layer.cpw.mods.fml.common.network.OpenGuiMessage;
 import mtn.forge_layer.cpw.mods.fml.common.network.simpleimpl.MessageContext;
 import mtn.forge_layer.cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
+import mtn.minecraft_layer.net.minecraft.entity.player.EntityPlayer;
+import mtn.minecraft_layer.net.minecraft.entity.player.InventoryPlayer;
 import mtn.minecraft_layer.net.minecraft.inventory.Container;
 import mtn.minecraft_layer.net.minecraft.inventory.IInventory;
-import mtn.minecraft_layer.net.minecraft.inventory.InventoryPlayer;
 import mtn.minecraft_layer.net.minecraft.inventory.Slot;
 import mtn.minecraft_layer.net.minecraft.tileentity.TileEntity;
+import mtn.minecraft_layer.net.minecraft.world.World;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.inventory.ChestMenu;
 
 /**
  * Handles {@code NetworkRegistry.openGui}. The server resolves the registered
@@ -32,7 +36,7 @@ public final class OpenGuiHandler {
             NetworkRegistry.INSTANCE.newSimpleChannel(LAYER_CHANNEL);
 
     private static final int CHEST_ROWS = 3;
-    private static final int CHEST_COLS = 3;
+    private static final int CHEST_COLS = 9;
 
     private OpenGuiHandler() {
     }
@@ -51,12 +55,16 @@ public final class OpenGuiHandler {
         // force static init of the wrapper (channel already registered by preInit)
     }
 
-    /** Entry point from {@code NetworkRegistry.openGui}. */
+    /** Entry point from {@code NetworkRegistry.openGui} / {@code EntityPlayer.openGui}. */
     public static void openGui(Object mod, int id, Object player, Object world,
             int x, int y, int z) {
         ServerPlayer sp = resolveServerPlayer(player);
+        EntityPlayer fp = player instanceof EntityPlayer
+                ? (EntityPlayer) player
+                : (sp != null ? new EntityPlayerProxy(sp) : null);
+        World fw = world instanceof World ? (World) world : (fp != null ? fp.worldObj : null);
         if (sp != null) {
-            openGuiServerSide(mod, id, sp, player, world, x, y, z);
+            openGuiServerSide(mod, id, sp, fp, fw, x, y, z);
         } else if (player instanceof net.minecraft.client.player.LocalPlayer) {
             System.out.println("[MTN-LAYER] openGui called from the client; ignoring (server-driven).");
         }
@@ -75,32 +83,31 @@ public final class OpenGuiHandler {
 
     /** Server: build the container menu, attach to the player, send OpenGuiMessage. */
     private static void openGuiServerSide(Object mod, int id, ServerPlayer sp,
-            Object player, Object world, int x, int y, int z) {
+            EntityPlayer player, World world, int x, int y, int z) {
         IGuiHandler handler = NetworkRegistry.INSTANCE.getGuiHandler(mod);
         if (handler == null) {
             System.out.println("[MTN-LAYER] openGuiServer: no IGuiHandler for mod " + mod);
             return;
         }
         // The ForgePlayerBridge/ForgeWorldBridge the example expects to cast to.
-        Object playerProxy = player instanceof ForgePlayerBridge
-                ? player
-                : new EntityPlayerProxy(sp);
+        EntityPlayer playerProxy = player;
         Object element = handler.getServerGuiElement(id, playerProxy, world, x, y, z);
         if (!(element instanceof Container)) {
             System.out.println("[MTN-LAYER] openGuiServer: server element is not a layered Container: "
                     + String.valueOf(element));
             return;
         }
+
         int syncId = nextSyncId();
-        FabricScreenHandlerAdapter adapter =
-                new FabricScreenHandlerAdapter(syncId, (Container) element);
-        sp.containerMenu = adapter;
+        sp.containerMenu = buildMenu(syncId, (Container) element, sp.getInventory(),
+                chestInventoryOf((Container) element));
+
         LAYER_WRAPPER.sendTo(new OpenGuiMessage(syncId, id, x, y, z), sp);
         System.out.println("[MTN-LAYER] opened GUI " + id + " syncId " + syncId
                 + " for " + sp.getGameProfile().getName());
     }
 
-    /** Client: prefer the GUI handler's element; else open FabricHandledScreen. */
+    /** Client: open the matching vanilla/fallback screen for the received OpenGuiMessage. */
     private static void openGuiClientSide(OpenGuiMessage msg) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
@@ -115,17 +122,42 @@ public final class OpenGuiHandler {
                 chestInv = (IInventory) forgeTe;
             }
         }
-        InventoryPlayer playerInv = new InventoryPlayer();
-        Container forge = buildContainer(playerInv, chestInv);
-        FabricScreenHandlerAdapter adapter =
-                new FabricScreenHandlerAdapter(msg.getSyncId(), forge);
-        mc.player.containerMenu = adapter;
-        mc.setScreen(new FabricHandledScreen(adapter, mc.player.getInventory(),
-                Component.literal("My Chest")));
+        mc.player.containerMenu = buildMenu(msg.getSyncId(),
+                new Container() {
+                }, mc.player.getInventory(), chestInv);
+        if (mc.player.containerMenu instanceof ChestMenu) {
+            mc.setScreen(new ContainerScreen((ChestMenu) mc.player.containerMenu,
+                    mc.player.getInventory(), Component.literal("My Chest")));
+        } else {
+            mc.setScreen(new FabricHandledScreen((FabricScreenHandlerAdapter)
+                    mc.player.containerMenu, mc.player.getInventory(),
+                    Component.literal("My Chest")));
+        }
         System.out.println("[MTN-LAYER] opened client GUI " + msg.getGuiId());
     }
 
-    /** Mirrors the R3b spec layout: 3x3 chest + 27 player + 9 hotbar slots. */
+    /** Standard chest layout (3x9 = 27 slots). */
+    private static final int CHEST_SLOTS = 9 * 3;
+
+    /** Builds the appropriate menu: vanilla ChestMenu for standard chest; custom adapter otherwise. */
+    private static net.minecraft.world.inventory.AbstractContainerMenu buildMenu(
+            int syncId, Container forge, net.minecraft.world.entity.player.Inventory vinv,
+            IInventory chestInv) {
+        if (chestInv != null && chestInv.getSizeInventory() == CHEST_SLOTS) {
+            return net.minecraft.world.inventory.ChestMenu.threeRows(syncId, vinv,
+                    new FabricInventoryAdapter(chestInv));
+        }
+        // Non-standard layout: mirror the layered Container's slots 1:1.
+        return new FabricScreenHandlerAdapter(syncId, forge);
+    }
+
+    /** Extracts the chest inventory from the first slot of a layered Container. */
+    private static IInventory chestInventoryOf(Container c) {
+        java.util.List<Slot> slots = c.getInventorySlots();
+        return slots.isEmpty() ? null : slots.get(0).inventory;
+    }
+
+    /** Mirrors the R3b spec layout: 3x3 chest + 27 player + 9 hotbar slots (fallback). */
     private static Container buildContainer(InventoryPlayer playerInv, IInventory chest) {
         Container c = new Container() {
         };
