@@ -18,7 +18,8 @@ public @interface Mod {
 
     String name();
 
-    String version();
+    /** Forge 1.7.10 element with an empty-string default. */
+    String version() default "";
 
     /**
      * Stand-in for the Forge {@code dependencies()} element. Declared as
@@ -44,5 +45,7 @@ public @interface Mod {
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.FIELD)
     @interface Instance {
+        /** Forge 1.7.10: the mod id this field names. */
+        String value() default "";
     }
 }

@@ -2,6 +2,7 @@ package mtn.forge_layer.cpw.mods.fml.common.registry;
 
 import mtn.minecraft_layer.net.minecraft.block.Block;
 import mtn.minecraft_layer.net.minecraft.item.Item;
+import mtn.minecraft_layer.net.minecraft.item.ItemStack;
 import mtn.minecraft_layer.net.minecraft.tileentity.TileEntity;
 import mtn.forge_layer.registry.ForgeBlockAdapter;
 import mtn.forge_layer.registry.ForgeItemAdapter;
@@ -150,5 +151,21 @@ public final class GameRegistry {
             Class<? extends TileEntity> teClass,
             String id, String legacyId) {
         registerTileEntity(teClass, id);
+    }
+
+    /** Forge 1.7.10: register a TE with both a namespaced and legacy id. */
+    public static void registerTileEntityWithAlternatives(
+            Class<? extends TileEntity> teClass,
+            String id, String legacyId) {
+        registerTileEntity(teClass, id);
+        // TODO(mtn-layer): also index the legacy id so old saves keep working.
+    }
+
+    /**
+     * Forge 1.7.10: register a named custom itemstack (creative/NEI lists).
+     * Stub — safe no-op.
+     */
+    public static void registerCustomItemStack(String name, ItemStack stack) {
+        // TODO(mtn-layer): add the stack to the custom-item common list.
     }
 }
