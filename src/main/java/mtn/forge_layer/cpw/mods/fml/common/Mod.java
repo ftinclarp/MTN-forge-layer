@@ -21,6 +21,13 @@ public @interface Mod {
     String version();
 
     /**
+     * Stand-in for the Forge {@code dependencies()} element. Declared as
+     * {@code String[]} with a default so a single String literal like
+     * {@code "required-after:Forge@[10.10,)"} is accepted at the call site.
+     */
+    String[] dependencies() default {};
+
+    /**
      * Stand-in for {@code cpw.mods.fml.common.Mod.EventHandler} — marks a
      * lifecycle method as a Forge lifecycle event handler. Kept as a nested
      * annotation to match the original Forge layout.
@@ -28,5 +35,14 @@ public @interface Mod {
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.METHOD)
     @interface EventHandler {
+    }
+
+    /**
+     * Stand-in for {@code cpw.mods.fml.common.Mod.Instance} — marks the
+     * static field holding the mod's singleton instance.
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.FIELD)
+    @interface Instance {
     }
 }
