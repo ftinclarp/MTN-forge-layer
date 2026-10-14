@@ -7,6 +7,8 @@ import mtn.minecraft_layer.net.minecraft.tileentity.TileEntity;
 import mtn.forge_layer.registry.ForgeBlockAdapter;
 import mtn.forge_layer.registry.ForgeItemAdapter;
 
+import net.minecraftforge.oredict.ShapedOreRecipe;
+
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -161,11 +163,14 @@ public final class GameRegistry {
         // TODO(mtn-layer): also index the legacy id so old saves keep working.
     }
 
-    /**
-     * Forge 1.7.10: register a named custom itemstack (creative/NEI lists).
-     * Stub — safe no-op.
-     */
     public static void registerCustomItemStack(String name, ItemStack stack) {
         // TODO(mtn-layer): add the stack to the custom-item common list.
+    }
+
+    /** Forge 1.7.10: register a shaped recipe (oredict-aware). */
+    public static void addRecipe(ShapedOreRecipe recipe) {
+        System.out.println("[MTN-LAYER] GameRegistry.addRecipe: " + recipe.getResult());
+        // The transform stage separately serializes these into data/<modid>/recipes.
+        // TODO(mtn-layer): also feed ShapedOreRecipe into the Fabric recipes/bridge.
     }
 }
