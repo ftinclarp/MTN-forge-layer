@@ -1,10 +1,15 @@
 package mtn.forge_layer.registry;
 
+import io.netty.buffer.Unpooled;
+import io.netty.channel.embedded.EmbeddedChannel;
 import mtn.forge_layer.cpw.mods.fml.common.network.FMLIndexedMessageToMessageCodec;
+import mtn.forge_layer.cpw.mods.fml.common.network.FMLEmbeddedChannel;
 import mtn.forge_layer.cpw.mods.fml.common.network.NetworkRegistry;
+import mtn.forge_layer.cpw.mods.fml.common.network.internal.FMLProxyPacket;
 import mtn.forge_layer.cpw.mods.fml.common.network.simpleimpl.IMessage;
 import mtn.forge_layer.cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import mtn.forge_layer.cpw.mods.fml.common.network.simpleimpl.MessageContext;
+import mtn.forge_layer.cpw.mods.fml.relauncher.Side;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -17,22 +22,23 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 
-import io.netty.buffer.Unpooled;
-
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Bridges the Forge-1.7.10 simple network API onto Fabric's Networking API v1.
+ * Bridges the Forge-1.7.10 simple + embedded network APIs onto Fabric's Networking API v1.
  *
- * <p>Each {@link FMLIndexedMessageToMessageCodec} registered via
- * {@link NetworkRegistry#codecs()} becomes a custom payload + global receiver on its
- * channel. The payload ({@link RawPayload}) carries the logical channel name and the
- * already-encoded packet bytes; the receiver decodes them with the matching codec and
- * dispatches to the {@link IMessageHandler} registered for the message class.
+ * <p>Both network styles share one envelope payload ({@link RawPayload}) carrying the
+ * logical channel name and the encoded bytes. On receive the bytes are fed into the
+ * matching side's {@link FMLEmbeddedChannel} embedded netty pipeline (where the codec
+ * decodes them) — if the channel was registered through
+ * {@link NetworkRegistry#newChannel(String, io.netty.channel.ChannelHandler...)},
+ * mod-added netty handlers such as IronChest's {@code SimpleChannelInboundHandler}
+ * run; otherwise the codec is decoded directly and the registered
+ * {@link IMessageHandler} is dispatched to.
  *
- * <p>R3a goal is install + registration: the example mod only REGISTERS a message and
- * never sends, so the receivers exist but are silent until an actual send (R3b).
+ * <p>The {@code SimpleNetworkWrapper} path (com.example ironchest's GUI open message)
+ * registers its codec through {@link #registerCodec} and sends via {@link #encode}.
  */
 public final class FabricNetworkBridge {
 
@@ -65,8 +71,8 @@ public final class FabricNetworkBridge {
     }
 
     /**
-     * Called from {@code FabricEntry.onInitialize()} after the ported mod's lifecycle
-     * (preInit registers messages -> codecs). Installs a receiver per registered codec.
+     * Called from {@code FabricEntry.onInitialize()} after the ported mod's lifecycle.
+     * Installs the single wire envelope + receivers for every registered codec.
      */
     public static void install(FabricLoader loader) {
         int n = NetworkRegistry.INSTANCE.codecs().size();
@@ -81,7 +87,6 @@ public final class FabricNetworkBridge {
         System.out.println("[MTN-LAYER] network bridge installed (" + n + " codecs)");
     }
 
-    /** Installs client + server play receivers for one FML channel. */
     private static boolean receiversInstalled = false;
 
     private static synchronized void registerReceiver(String channelName) {
@@ -89,7 +94,6 @@ public final class FabricNetworkBridge {
             return;
         }
         receiversInstalled = true;
-        // Play + server: a payload type must be registered before a receiver can use it.
         PayloadTypeRegistry.playC2S().register(RawPayload.TYPE, RawPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(RawPayload.TYPE, RawPayload.CODEC);
 
@@ -102,19 +106,28 @@ public final class FabricNetworkBridge {
     /** Decode the payload bytes with the matching codec and dispatch to its handler. */
     private static void handle(RawPayload payload, MessageContext.Side side) {
         String channel = payload.channel().getPath();
+        Side fmlSide = side == MessageContext.Side.CLIENT ? Side.CLIENT : Side.SERVER;
+        FMLEmbeddedChannel embedded = NetworkRegistry.INSTANCE.getChannel(channel, fmlSide);
+        if (embedded != null) {
+            // Channel pair path (old-style netty): feed bytes into the pipeline so the
+            // codec + mod-added handlers (e.g. IronChestMessageHandler) process them.
+            embedded.acceptInbound(
+                    new FMLProxyPacket(Unpooled.wrappedBuffer(payload.data()), channel));
+            return;
+        }
         for (Map.Entry<FMLIndexedMessageToMessageCodec<?>, String> e : CHANNELS.entrySet()) {
             if (!e.getValue().equals(channel)) {
                 continue;
             }
             FMLIndexedMessageToMessageCodec<?> codec = e.getKey();
-            FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.wrappedBuffer(payload.data()));
             try {
-                IMessage msg = codec.decode(new MessageContext(side), buf);
+                IMessage msg = decode(codec, channel, payload.data());
                 IMessageHandler<?, ?> handler = HANDLERS.get(msg.getClass());
                 if (handler != null) {
                     dispatch(handler, msg, new MessageContext(side));
                 } else {
-                    System.out.println("[MTN-LAYER] no handler for " + msg.getClass().getSimpleName());
+                    System.out.println("[MTN-LAYER] no handler for "
+                            + msg.getClass().getSimpleName());
                 }
             } catch (RuntimeException ex) {
                 System.out.println("[MTN-LAYER] packet decode/dispatch failed for channel "
@@ -125,35 +138,55 @@ public final class FabricNetworkBridge {
         System.out.println("[MTN-LAYER] received packet on unknown channel: " + channel);
     }
 
+    /** Decode bytes into a message by running them through a one-shot embedded pipeline. */
+    private static IMessage decode(FMLIndexedMessageToMessageCodec<?> codec, String channel,
+            byte[] data) {
+        EmbeddedChannel ch = new EmbeddedChannel(codec);
+        ch.writeInbound(new FMLProxyPacket(Unpooled.wrappedBuffer(data), channel));
+        Object out = ch.readInbound();
+        ch.finish();
+        if (!(out instanceof IMessage msg)) {
+            throw new IllegalStateException("codec produced " +
+                    String.valueOf(out));
+        }
+        return msg;
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static void dispatch(IMessageHandler handler, IMessage msg, MessageContext ctx) {
         IMessage reply = (IMessage) handler.onMessage(msg, ctx);
-        // R3a: replies are not resent yet (R3b wires the reply path).
-        if (reply == null) {
-            return;
+        if (reply != null) {
+            System.out.println("[MTN-LAYER] reply generated for "
+                    + msg.getClass().getSimpleName() + " (reply re-send not wired)");
         }
-        System.out.println("[MTN-LAYER] reply generated for " + msg.getClass().getSimpleName()
-                + " (reply send in R3b)");
     }
 
     /** Encode a message through its registered codec into a wire payload. */
     public static RawPayload encode(IMessage msg, String channel) {
         for (Map.Entry<FMLIndexedMessageToMessageCodec<?>, String> e : CHANNELS.entrySet()) {
             FMLIndexedMessageToMessageCodec<?> codec = e.getKey();
-            if (!codec.classToId().containsKey(msg.getClass())) {
+            if (!e.getValue().equals(channel)
+                    || !codec.classToId().containsKey(msg.getClass())) {
                 continue;
             }
-            FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
-            MessageContext ctx = new MessageContext(MessageContext.Side.CLIENT);
+            EmbeddedChannel ch = new EmbeddedChannel(codec);
             try {
-                codec.encode(ctx, msg, buf);
+                ch.writeOutbound(msg);
+                Object out = ch.readOutbound();
+                FMLProxyPacket proxy = out instanceof FMLProxyPacket p
+                        ? p
+                        : new FMLProxyPacket(
+                                new FriendlyByteBuf(Unpooled.wrappedBuffer(
+                                        out instanceof byte[] b ? b : new byte[0])), channel);
+                byte[] data = proxy.toBytes();
+                return new RawPayload(
+                        ResourceLocation.fromNamespaceAndPath(CHANNEL_PREFIX, channel), data);
             } catch (RuntimeException ex) {
-                System.out.println("[MTN-LAYER] encode failed for " + msg.getClass().getSimpleName()
-                        + ": " + ex.getMessage());
+                System.out.println("[MTN-LAYER] encode failed for "
+                        + msg.getClass().getSimpleName() + ": " + ex.getMessage());
+            } finally {
+                ch.finish();
             }
-            byte[] data = new byte[buf.readableBytes()];
-            buf.readBytes(data);
-            return new RawPayload(ResourceLocation.fromNamespaceAndPath(CHANNEL_PREFIX, channel), data);
         }
         throw new IllegalStateException("Message " + msg.getClass().getName()
                 + " has no registered codec for channel " + channel);

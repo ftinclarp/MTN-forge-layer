@@ -4,7 +4,6 @@ import mtn.minecraft_layer.net.minecraft.nbt.NBTTagCompound;
 import mtn.minecraft_layer.net.minecraft.tileentity.TileEntity;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
-
 /**
  * Bridges a Forge-1.7.10-style {@link TileEntity} to a vanilla
  * {@link net.minecraft.world.level.block.entity.BlockEntity}, so ported
@@ -66,6 +65,23 @@ public class FabricBlockEntityAdapter
     public void setChanged() {
         forgeTe.markDirty();
         super.setChanged();
+    }
+
+    /**
+     * TODO(mtn-layer): wire the Forge {@code TileEntity.getDescriptionPacket()} send
+     * path. This is the server→client TE sync: {@code FabricBlockEntityAdapter}
+     * would escalate {@code getDescriptionPacket()} → {@code FMLProxyPacket} bytes →
+     * a custom payload send to tracking players. Not wired yet (avoids touching block
+     * runtime); the client receive half is already real via the embedded channel.
+     */
+    public mtn.minecraft_layer.net.minecraft.network.Packet getForgeDescriptionPacket() {
+        try {
+            return forgeTe == null ? null : forgeTe.getDescriptionPacket();
+        } catch (RuntimeException ex) {
+            System.out.println("[MTN-LAYER] getForgeDescriptionPacket threw: "
+                    + ex.getMessage());
+            return null;
+        }
     }
 
     public TileEntity getForgeTe() {
