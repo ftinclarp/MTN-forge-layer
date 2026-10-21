@@ -28,7 +28,7 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}")
 
     // Minecraft 1.7.10 API stand-ins (net.minecraft.*).
-    modImplementation("com.github.ftinclarp:MTN-minecraft-layer:1.1.7")
+    modImplementation("com.github.ftinclarp:MTN-minecraft-layer:1.1.8")
 }
 
 // Publish to Maven Local only — so the artifact can be consumed during

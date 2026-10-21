@@ -110,6 +110,17 @@ public class NetworkRegistry {
     }
 
     /**
+     * Returns the first registered GUI handler, or null. In integrated
+     * singleplayer the client and server share this registry, so the
+     * client-side open-gui path can retrieve the ported mod's handler this way
+     * without holding the mod instance.
+     */
+    public IGuiHandler getFirstRegisteredGuiHandler() {
+        java.util.Iterator<IGuiHandler> it = guiHandlers.values().iterator();
+        return it.hasNext() ? it.next() : null;
+    }
+
+    /**
      * Opens a GUI for the given player. On the server this sends an
      * {@link OpenGuiMessage}; on the client it resolves and opens the screen.
      * Delegates to {@code mtn.forge_layer.registry.OpenGuiHandler}.

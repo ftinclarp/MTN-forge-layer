@@ -113,6 +113,25 @@ public final class OpenGuiHandler {
         if (mc.player == null) {
             return;
         }
+        // Resolve the ported client GUI element (the @SidedProxy ClientProxy's
+        // GUIChest) via the registered handler, so the mod's own texture + title
+        // are used instead of the layer's vanilla fallback.
+        mtn.minecraft_layer.net.minecraft.client.gui.inventory.GuiContainer portedGui = null;
+        try {
+            IGuiHandler handler = NetworkRegistry.INSTANCE.getFirstRegisteredGuiHandler();
+            if (handler != null) {
+                ForgePlayerBridge fp = new ForgePlayerBridge(mc.player);
+                ForgeWorldBridge fw = new ForgeWorldBridge(mc.player.level());
+                Object element = handler.getClientGuiElement(msg.getGuiId(), fp, fw,
+                        msg.getX(), msg.getY(), msg.getZ());
+                if (element instanceof mtn.minecraft_layer.net.minecraft.client.gui.inventory.GuiContainer g) {
+                    portedGui = g;
+                }
+            }
+        } catch (Throwable t) {
+            System.out.println("[MTN-LAYER] getClientGuiElement threw: " + t);
+        }
+
         IInventory chestInv = null;
         net.minecraft.world.level.block.entity.BlockEntity be = mc.player.level()
                 .getBlockEntity(new net.minecraft.core.BlockPos(msg.getX(), msg.getY(), msg.getZ()));
@@ -122,18 +141,36 @@ public final class OpenGuiHandler {
                 chestInv = (IInventory) forgeTe;
             }
         }
-        mc.player.containerMenu = buildMenu(msg.getSyncId(),
-                new Container() {
-                }, mc.player.getInventory(), chestInv);
-        if (mc.player.containerMenu instanceof ChestMenu) {
-            mc.setScreen(new ContainerScreen((ChestMenu) mc.player.containerMenu,
-                    mc.player.getInventory(), Component.literal("My Chest")));
+
+        // Menu mirrors the layered container's slots 1:1.
+        mtn.minecraft_layer.net.minecraft.inventory.Container layered =
+                portedGui != null ? portedGui.inventorySlots : new Container() {
+                };
+        mc.player.containerMenu = new FabricScreenHandlerAdapter(
+                msg.getSyncId(), layered);
+
+        String title = chestTitle(layered, chestInv);
+        if (portedGui != null) {
+            mc.setScreen(new PortedChestScreen(
+                    (FabricScreenHandlerAdapter) mc.player.containerMenu,
+                    mc.player.getInventory(), Component.literal(title), portedGui));
         } else {
-            mc.setScreen(new FabricHandledScreen((FabricScreenHandlerAdapter)
-                    mc.player.containerMenu, mc.player.getInventory(),
-                    Component.literal("My Chest")));
+            mc.setScreen(new FabricHandledScreen(
+                    (FabricScreenHandlerAdapter) mc.player.containerMenu,
+                    mc.player.getInventory(), Component.literal("My Chest")));
         }
         System.out.println("[MTN-LAYER] opened client GUI " + msg.getGuiId());
+    }
+
+    /** Best-effort chest display name: layered inventory name, else the fallback. */
+    private static String chestTitle(Container forge, IInventory chestInv) {
+        if (chestInv != null) {
+            String name = chestInv.getInventoryName();
+            if (name != null && !name.isEmpty()) {
+                return name;
+            }
+        }
+        return "Iron Chest";
     }
 
     /** Standard chest layout (3x9 = 27 slots). */

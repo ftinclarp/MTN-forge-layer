@@ -7,37 +7,42 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 
 /**
- * Fabric↔Forge bridge for {@link TileEntitySpecialRenderer} registration.
+ * Fabric↔Forge bridge for {@link TileEntitySpecialRenderer} registration and
+ * invocation.
  *
  * <p>When a ported mod calls
  * {@code ClientRegistry.bindTileEntitySpecialRenderer(teClass, tesr)} this
  * bridge registers a real Fabric {@code BlockEntityRenderer} against the
- * Fabric {@code BlockEntityType} that {@code GameRegistry} built for the same
- * tile class, so the block actually renders through the vanilla block-entity
- * pipeline.
+ * Fabric {@code BlockEntityType} that {@code GameRegistry} built, so the block
+ * renders through the vanilla block-entity pipeline.
  *
- * <p><b>RENDERING IS STOPPED THIS BATCH (GL11-heavy):</b> the IronChest TESR
- * body drives a legacy fixed-function GL11 matrix stack
- * ({@code glPushMatrix/glTranslatef/glScalef/glRotatef}) plus immediate-mode
- * quads from {@code ModelRenderer}. Hand-translating gl11 → PoseStack here
- * would be a manual hack the project defers to the dedicated
- * MTN-lwjgl-transformer project. So {@link #register} still wires the Fabric
- * BER, but its render body reports the situation once and renders nothing.
+ * <p>The registered {@link BridgedBlockEntityRenderer} installs the Fabric
+ * render context (the {@code PoseStack} + {@code MultiBufferSource}) onto the
+ * layer dispatcher and the base-class {@code matrices} field, then delegates to
+ * the ported {@code tesr.renderTileEntityAt(...)}. The ported TESR's body was
+ * rewritten by MTN-lwjgl-transformer so its GL11 calls are now
+ * {@code matrices.pushPose()/translate()/mulPose()/scale()}, and the
+ * {@code ModelRenderer} bridge emits cube quads through
+ * {@code dispatcher.getCurrentVertexConsumer()}.
  */
 public final class ForgeTESRBridge {
-
-    private static boolean warned = false;
 
     private ForgeTESRBridge() {
     }
 
     /**
-     * Register a Fabric BlockEntityRenderer for the tile class. The renderer is
-     * a structural placeholder: it exists so the ported TESR is reachable, but
-     * the rendering is deferred (see class javadoc).
+     * Register a Fabric BlockEntityRenderer for the tile class that delegates to
+     * the ported TESR.
      */
     public static void register(Class<? extends TileEntity> teClass,
                                 TileEntitySpecialRenderer<?> tesr) {
+        if (teClass == null) {
+            // e.g. IronChestType.WOOD uses the vanilla chest and has no tile
+            // class; there is nothing to bind a renderer to. Not an error.
+            System.out.println("[MTN-LAYER] ForgeTESRBridge: register skipped — "
+                    + "no tile class to bind a renderer to.");
+            return;
+        }
         try {
             net.minecraft.world.level.block.entity.BlockEntityType<?> type =
                     mtn.forge_layer.cpw.mods.fml.common.registry.GameRegistry
@@ -71,14 +76,18 @@ public final class ForgeTESRBridge {
     }
 
     /**
-     * The registered Fabric block-entity renderer. Delegation to the Forge TESR
-     * is STOPPED pending GL11 translation; it logs once and draws nothing.
+     * The registered Fabric block-entity renderer. It wires the PoseStack +
+     * MultiBufferSource into the layer dispatcher and the TESR base-class
+     * {@code matrices} field, then delegates to the ported TESR.
      */
     private static class BridgedBlockEntityRenderer
             implements BlockEntityRenderer<net.minecraft.world.level.block.entity.BlockEntity> {
 
         private final Class<? extends TileEntity> teClass;
-        private final TileEntitySpecialRenderer<?> tesr;
+        // Raw type on purpose: the same TESR is used for many tile classes, and
+        // we call the untyped renderTileEntityAt(Object, ...) entry point.
+        @SuppressWarnings("rawtypes")
+        private final TileEntitySpecialRenderer tesr;
 
         BridgedBlockEntityRenderer(Class<? extends TileEntity> teClass,
                                    TileEntitySpecialRenderer<?> tesr) {
@@ -92,16 +101,38 @@ public final class ForgeTESRBridge {
                            com.mojang.blaze3d.vertex.PoseStack matrices,
                            net.minecraft.client.renderer.MultiBufferSource consumers,
                            int light, int overlay) {
-            if (!warned) {
-                warned = true;
-                System.out.println("[MTN-LAYER] ForgeTESRBridge: rendering of " + teClass.getName()
-                        + " is STOPPED — the ported TESR is GL11-heavy "
-                        + "(glPushMatrix/glTranslatef/glRotatef). GL11→PoseStack "
-                        + "translation is deferred to MTN-lwjgl-transformer "
-                        + "(TODO(mtn-layer)).");
+            try {
+                TileEntity forgeTe = ((net.minecraft.world.level.block.entity
+                        .BlockEntity) entity) instanceof FabricBlockEntityAdapter fbea
+                        ? fbea.getForgeTe() : null;
+                if (forgeTe == null) {
+                    return;
+                }
+                // Install the Fabric render context for the ModelRenderer bridge.
+                mtn.minecraft_layer.net.minecraft.client.renderer.tileentity
+                        .TileEntityRendererDispatcher dispatcher =
+                        mtn.minecraft_layer.net.minecraft.client.renderer.tileentity
+                                .TileEntityRendererDispatcher.instance;
+                dispatcher.installRenderContext(matrices, consumers, light, overlay);
+                dispatcher.field_147550_f =
+                        mtn.forge_layer.registry.ForgeWorldBridge
+                                .fromClientLevel(net.minecraft.client.Minecraft
+                                        .getInstance().level);
+                dispatcher.field_147560_j = entity.getBlockPos().getX();
+                dispatcher.field_147561_k = entity.getBlockPos().getY();
+                dispatcher.field_147558_l = entity.getBlockPos().getZ();
+
+                // The transformed mod code references `matrices`; it inherits this
+                // field from the TESR base class.
+                tesr.matrices = matrices;
+                tesr.renderTileEntityAt(forgeTe, 0.0D, 0.0D, 0.0D, tickDelta);
+            } catch (Throwable t) {
+                System.out.println("[MTN-LAYER] ForgeTESRBridge.render failed for "
+                        + teClass.getName() + ": " + t);
+            } finally {
+                mtn.minecraft_layer.net.minecraft.client.renderer.tileentity
+                        .TileEntityRendererDispatcher.instance.clearRenderContext();
             }
-            // TODO(mtn-layer): drive tesr.renderTileEntityAt through a
-            //  PoseStack/VertexConsumer adapter once the GL11 translation lands.
         }
     }
 }

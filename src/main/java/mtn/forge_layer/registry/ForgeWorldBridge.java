@@ -27,4 +27,9 @@ public class ForgeWorldBridge extends mtn.minecraft_layer.net.minecraft.world.Wo
         }
         return null;
     }
+
+    /** Helpers for the TESR bridge. */
+    public static ForgeWorldBridge fromClientLevel(Level level) {
+        return new ForgeWorldBridge(level);
+    }
 }
