@@ -109,11 +109,25 @@ public final class ForgeTESRBridge {
                     return;
                 }
                 // Install the Fabric render context for the ModelRenderer bridge.
+                // Fabric's per-block light is normally reliable, but some
+                // pipelines deliver 0 here; compute the real world light at the
+                // block position so the model is never pitch black.
+                int realLight = light;
+                try {
+                    net.minecraft.client.Minecraft mc =
+                            net.minecraft.client.Minecraft.getInstance();
+                    if (mc.level != null) {
+                        realLight = net.minecraft.client.renderer.LevelRenderer
+                                .getLightColor(mc.level, entity.getBlockPos());
+                    }
+                } catch (Throwable ignored) {
+                    // keep the passed-in light on any failure
+                }
                 mtn.minecraft_layer.net.minecraft.client.renderer.tileentity
                         .TileEntityRendererDispatcher dispatcher =
                         mtn.minecraft_layer.net.minecraft.client.renderer.tileentity
                                 .TileEntityRendererDispatcher.instance;
-                dispatcher.installRenderContext(matrices, consumers, light, overlay);
+                dispatcher.installRenderContext(matrices, consumers, realLight, overlay);
                 dispatcher.field_147550_f =
                         mtn.forge_layer.registry.ForgeWorldBridge
                                 .fromClientLevel(net.minecraft.client.Minecraft
